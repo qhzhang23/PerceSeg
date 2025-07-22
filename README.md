@@ -20,13 +20,13 @@ LoveDA
 
 ## Training
 
-```python
+```
 python PerceSeg/train_supervision.py -c PerceSeg/config/vaihingen/perceseg.py
 ```
 
 
 ## Testing
 
-```python
+```
 python vaihingen_test.py -c PerceSeg/config/vaihingen/perceseg.py -o fig_results/vaihingen/perceseg-test --rgb -t lr
 ```
