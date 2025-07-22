@@ -890,34 +890,6 @@ class AuxHead(nn.Module):
         return feat
 
 
-# class RandomMaskingGenerator:
-#     """
-#         input_size：传入的为window_size=input_size//patch_size，即224/16=14
-#         mask_ratio：mask的比例，默认为0.75
-#     """
-#
-#     def __init__(self, input_size, mask_ratio):
-#         if not isinstance(input_size, tuple):
-#             input_size = (input_size,) * 2
-#
-#         self.height, self.width = input_size
-#
-#         self.num_patches = self.height * self.width  # patch的总数即196
-#         self.num_mask = int(mask_ratio * self.num_patches)  # 196 * 0.75
-#
-#     def __repr__(self):
-#         repr_str = "Maks: total patches {}, mask patches {}".format(
-#             self.num_patches, self.num_mask
-#         )
-#         return repr_str
-#
-#     def __call__(self):
-#         mask = np.hstack([  # 水平方向叠起来
-#             np.zeros(self.num_patches - self.num_mask),  # 25%为0
-#             np.ones(self.num_mask),  # mask的部分设为1
-#         ])
-#         np.random.shuffle(mask)
-#         return mask # [196]
 class RandomMaskingGenerator:
     def __init__(self, input_size, mask_ratio):
         if not isinstance(input_size, tuple):
@@ -942,115 +914,48 @@ class RandomMaskingGenerator:
 
 
 # def mask(res,ratio):
-#     device = res.device  # 保存原始设备
-#     res_cpu = res.cpu()  # 将输入数据临时移到 CPU
+#     device = res.device
+#     res_cpu = res.cpu()
 #     del res
 #     if torch.cuda.is_available():
-#         torch.cuda.empty_cache()  # 释放 PyTorch 缓存的显存
+#         torch.cuda.empty_cache()
 #     # mask = 0
 #     # B, C, H, W = res.shape
 #     # if H == W:
 #     #     arg = int(H / B)
 #     #     mask_generator  = RandomMaskingGenerator(arg, 0.10)
 #     # mask = mask_generator()
-#     # mask_tensor = torch.from_numpy(mask).view(1, -1, 1, 1)  # 转换为张量并调整形状
+#     # mask_tensor = torch.from_numpy(mask).view(1, -1, 1, 1)
 #     # res = res[~mask].reshape(B, -1, C)
 #     # return res
 #
 #     B, C, H, W = res_cpu.shape
-#     # 生成二维空间 Mask (H, W)
 #     mask_generator = RandomMaskingGenerator(input_size=(H, W), mask_ratio=ratio)
 #     spatial_mask = mask_generator()  # shape (H, W)
 #
-#     # 扩展 Mask 到四维 (B, C, H, W)
 #     mask_4d = torch.from_numpy(spatial_mask).to(res_cpu.device)
-#     mask_4d = mask_4d[None, None, :, :]  # 增加 Batch 和 Channel 维度
-#     mask_4d = mask_4d.expand(B, C, -1, -1)  # 广播到所有通道和批次
+#     mask_4d = mask_4d[None, None, :, :]
+#     mask_4d = mask_4d.expand(B, C, -1, -1)
 #
-#     # 应用 Mask：将 Mask 区域置零
-#     masked_tensor = res_cpu * (1 - mask_4d)  # 1 表示 Mask 区域，0 表示保留
+#     masked_tensor = res_cpu * (1 - mask_4d)
 #     # return masked_tensor, mask_4d
 #     return masked_tensor.to(device)
 
 
 def mask(res,ratio):
     B, C, H, W = res.shape
-    # 生成二维空间 Mask (H, W)
+
     mask_generator = RandomMaskingGenerator(input_size=(H, W), mask_ratio=ratio)
     spatial_mask = mask_generator()  # shape (H, W)
 
-    # 扩展 Mask 到四维 (B, C, H, W)
+
     mask_4d = torch.from_numpy(spatial_mask).to(res.device)
-    mask_4d = mask_4d[None, None, :, :]  # 增加 Batch 和 Channel 维度
-    mask_4d = mask_4d.expand(B, C, -1, -1)  # 广播到所有通道和批次
+    mask_4d = mask_4d[None, None, :, :]
+    mask_4d = mask_4d.expand(B, C, -1, -1)
 
-    # 应用 Mask：将 Mask 区域置零
-    masked_tensor = res * (1 - mask_4d)  # 1 表示 Mask 区域，0 表示保留
-    # return masked_tensor, mask_4d
+
+    masked_tensor = res * (1 - mask_4d)
     return masked_tensor
-
-import matplotlib.pyplot as plt
-
-def visualize_tensor(tensor: torch.Tensor, normalize: bool = True, cmap: str = None):
-    """
-    Visualize a PyTorch tensor directly using matplotlib.
-
-    Supports:
-    - 2D tensor of shape (H, W) -> displayed as grayscale or with specified colormap
-    - 3D tensor of shape (C, H, W) where C=1 or C=3 -> displayed as grayscale or RGB
-    - 4D tensor of shape (B, C, H, W), uses first element in batch
-
-    :param tensor: Input tensor
-    :param normalize: If True, scale tensor values to [0,1] for display
-    :param cmap: Matplotlib colormap for single-channel visualization (e.g., 'gray')
-    """
-    # Detach, move to CPU, remove grad
-    if tensor.requires_grad:
-        tensor = tensor.detach()
-    tensor = tensor.cpu()
-
-    # Remove batch dimension if present
-    if tensor.ndim == 4:
-        tensor = tensor[0]
-
-    arr = tensor.numpy()
-
-    # Handle 2D case
-    if arr.ndim == 2:
-        img = arr
-    else:
-        # Expand dims for 2D
-        if arr.ndim == 3:
-            c, h, w = arr.shape
-        else:
-            raise ValueError('Unsupported tensor shape: {}'.format(arr.shape))
-
-        # Normalize or cast
-        if normalize:
-            min_val, max_val = arr.min(), arr.max()
-            if max_val > min_val:
-                arr = (arr - min_val) / (max_val - min_val)
-            else:
-                arr = np.zeros_like(arr)
-        arr = np.clip(arr, 0, 1)
-
-        # Convert to HxWxC for RGB or take single channel
-        arr = np.transpose(arr, (1, 2, 0))
-        if c == 1:
-            img = arr[:, :, 0]
-        elif c == 3:
-            img = arr
-        else:
-            img = arr[:, :, :3]
-
-    # Plot
-    plt.figure()
-    if img.ndim == 2:
-        plt.imshow(img, cmap=cmap if cmap else 'gray', vmin=0, vmax=1)
-    else:
-        plt.imshow(img, vmin=0, vmax=1)
-    plt.axis('off')
-    plt.show()
 
 
 
@@ -1075,7 +980,7 @@ class Decoder(nn.Module):
 
         self.p1 = FeatureRefinementHead(encoder_channels[-4], decode_channels)
 
-        self.Grapher = Grapher(in_channels=256, conv='edge')
+        self.Grapher = Grapher(in_channels=256, conv='hyperedge')
 
         self.learnable_param0 = nn.Parameter(torch.ones(1, 256, 256, 256))
         self.learnable_param1 = nn.Parameter(torch.ones(1, 256, 128, 128))
@@ -1089,33 +994,10 @@ class Decoder(nn.Module):
 
     def forward(self, res1, res2, res3, res4, h, w, train_mode):
 
-        # if train_mode:
-        #     # 1
-        #     res1 = mask(res1, 0.10)
-        #     res2 = mask(res2, 0.10)
-        #     res3 = mask(res3, 0.10)
-        #     res4 = mask(res4, 0.10) # 尺度最小 set
-            # 2
-            # res1 = mask(res1, 0.25)
-            # res2 = mask(res2, 0.20)
-            # res3 = mask(res3, 0.15)
-            # res4 = mask(res4, 0.10)
-            #
-            # 3
-            # res1 = mask(res1, 0.10)
-            # res2 = mask(res2, 0.15)
-            # res3 = mask(res3, 0.20)
-            # res4 = mask(res4, 0.25)
-
-        # visualize_tensor(res1)
-        # visualize_tensor(res2)
-        # visualize_tensor(res3)
-        # visualize_tensor(res4)
-
         res1 = mask(res1, 0.25)
         res2 = mask(res2, 0.25)
         res3 = mask(res3, 0.25)
-        res4 = mask(res4, 0.25)  # 尺度最小 set
+        res4 = mask(res4, 0.25)
 
 
         x = self.b4(self.pre_conv(res4))
